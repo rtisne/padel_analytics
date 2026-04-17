@@ -428,21 +428,19 @@ if upload_video or st.session_state["video"] is not None:
 
             padel_court = padel_court_2d()
 
-            for t in st.session_state["df"]["time"]:
+            for i in range(len(st.session_state["df"])):
 
                 print("HERE1")
-    
-                x_values = st.session_state["df"].query(
-                    "time <= @t"
-                )[f"player{player_choice}_x"]
 
-                y_values = st.session_state["df"].query(
-                    "time <= @t"
-                )[f"player{player_choice}_y"] * -1
+                df_up_to_i = st.session_state["df"].iloc[:i + 1]
 
-                v_values = st.session_state["df"].query(
-                    "time <= @t"
-                )[f"player{player_choice}_V{velocity_type}4"].abs() * 3.6
+                x_values = df_up_to_i[f"player{player_choice}_x"]
+
+                y_values = df_up_to_i[f"player{player_choice}_y"] * -1
+
+                v_values = df_up_to_i[
+                    f"player{player_choice}_V{velocity_type}4"
+                ].abs() * 3.6
 
                 padel_court.add_trace(
                     go.Scatter(
