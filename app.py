@@ -476,8 +476,160 @@ if upload_video or st.session_state["video"] is not None:
         #    h=st.session_state["runner"].video_info.height,
         #)
 
-        
+        # ---------------------------------------------------------------
+        # Strike posture analysis section
+        # ---------------------------------------------------------------
+        st.header("Strike Posture Analysis")
+        st.markdown(
+            "Analyse des positions de frappe : angles articulaires mesurés "
+            "à partir des keypoints corporels détectés sur chaque joueur."
+        )
 
+        posture_angle_cols = [
+            "left_knee_angle",
+            "right_knee_angle",
+            "left_elbow_angle",
+            "right_elbow_angle",
+            "left_shoulder_angle",
+            "right_shoulder_angle",
+            "torso_lean_angle",
+            "shoulder_alignment_angle",
+        ]
+
+        posture_player_choice = st.radio(
+            "Player (posture): ",
+            options=[1, 2, 3, 4],
+            key="posture_player_choice",
+        )
+
+        # --- Posture scores over time ---
+        st.subheader("Posture scores over time")
+        score_fig = go.Figure()
+        ready_col = f"player{posture_player_choice}_ready_posture_score"
+        strike_col = f"player{posture_player_choice}_strike_posture_score"
+
+        if ready_col in st.session_state["df"].columns:
+            score_fig.add_trace(
+                go.Scatter(
+                    x=st.session_state["df"]["time"],
+                    y=st.session_state["df"][ready_col],
+                    mode="lines",
+                    name="Ready position score",
+                )
+            )
+        if strike_col in st.session_state["df"].columns:
+            score_fig.add_trace(
+                go.Scatter(
+                    x=st.session_state["df"]["time"],
+                    y=st.session_state["df"][strike_col],
+                    mode="lines",
+                    name="Strike posture score",
+                )
+            )
+        score_fig.update_layout(
+            yaxis_title="Score (0–100)",
+            xaxis_title="Time (s)",
+            yaxis=dict(range=[0, 105]),
+        )
+        st.plotly_chart(score_fig)
+
+        # --- Average posture summary ---
+        st.subheader("Average posture summary")
+        posture_summary = {
+            "Metric": [],
+            "Mean (°)": [],
+            "Std (°)": [],
+            "Min (°)": [],
+            "Max (°)": [],
+        }
+        for angle_name in posture_angle_cols:
+            col_name = f"player{posture_player_choice}_{angle_name}"
+            if col_name in st.session_state["df"].columns:
+                values = st.session_state["df"][col_name].dropna()
+                if len(values) > 0:
+                    posture_summary["Metric"].append(
+                        angle_name.replace("_", " ").title()
+                    )
+                    posture_summary["Mean (°)"].append(round(values.mean(), 1))
+                    posture_summary["Std (°)"].append(round(values.std(), 1))
+                    posture_summary["Min (°)"].append(round(values.min(), 1))
+                    posture_summary["Max (°)"].append(round(values.max(), 1))
+
+        if posture_summary["Metric"]:
+            st.dataframe(
+                pd.DataFrame(posture_summary).set_index("Metric")
+            )
+        else:
+            st.info("No posture data available for this player.")
+
+        # --- Joint angles over time ---
+        st.subheader("Joint angles over time")
+        angle_choice = st.selectbox(
+            "Select angle: ",
+            posture_angle_cols,
+            format_func=lambda x: x.replace("_", " ").title(),
+        )
+        angle_col = f"player{posture_player_choice}_{angle_choice}"
+        if angle_col in st.session_state["df"].columns:
+            angle_fig = go.Figure()
+            angle_fig.add_trace(
+                go.Scatter(
+                    x=st.session_state["df"]["time"],
+                    y=st.session_state["df"][angle_col],
+                    mode="lines",
+                    name=angle_choice.replace("_", " ").title(),
+                )
+            )
+            angle_fig.update_layout(
+                yaxis_title="Angle (°)",
+                xaxis_title="Time (s)",
+            )
+            st.plotly_chart(angle_fig)
+
+        # --- Angle distribution histogram ---
+        st.subheader("Angle distribution")
+        if angle_col in st.session_state["df"].columns:
+            values = st.session_state["df"][angle_col].dropna()
+            if len(values) > 0:
+                hist_fig = go.Figure()
+                hist_fig.add_trace(
+                    go.Histogram(
+                        x=values,
+                        nbinsx=30,
+                        name=angle_choice.replace("_", " ").title(),
+                    )
+                )
+                hist_fig.update_layout(
+                    xaxis_title="Angle (°)",
+                    yaxis_title="Count",
+                )
+                st.plotly_chart(hist_fig)
+
+        # --- Compare all 4 players on a specific angle ---
+        st.subheader("Compare players posture")
+        compare_angle = st.selectbox(
+            "Angle to compare: ",
+            posture_angle_cols,
+            format_func=lambda x: x.replace("_", " ").title(),
+            key="compare_angle",
+        )
+        compare_fig = go.Figure()
+        for pid in (1, 2, 3, 4):
+            col = f"player{pid}_{compare_angle}"
+            if col in st.session_state["df"].columns:
+                compare_fig.add_trace(
+                    go.Scatter(
+                        x=st.session_state["df"]["time"],
+                        y=st.session_state["df"][col],
+                        mode="lines",
+                        name=f"Player {pid}",
+                    )
+                )
+        compare_fig.update_layout(
+            yaxis_title="Angle (°)",
+            xaxis_title="Time (s)",
+        )
+        st.plotly_chart(compare_fig)
         
         
         
