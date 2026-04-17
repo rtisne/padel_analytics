@@ -9,8 +9,6 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
-import numpy as np
-
 
 def _angle_between_points(
     a: tuple[float, float],
@@ -213,7 +211,9 @@ def compute_posture_metrics(keypoints_by_name: dict) -> PostureMetrics:
         metrics.torso_lean_angle = _vertical_angle(head, torso)
 
     # Shoulder alignment: angle of the line between left and right shoulder
-    # relative to horizontal (0° = perfectly level)
+    # relative to horizontal (0° = perfectly level).
+    # We use abs() because we only care about the magnitude of tilt,
+    # not the direction (left-tilt vs right-tilt).
     if left_shoulder and right_shoulder:
         dx = right_shoulder[0] - left_shoulder[0]
         dy = right_shoulder[1] - left_shoulder[1]

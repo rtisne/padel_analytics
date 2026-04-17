@@ -187,7 +187,7 @@ class TrackingRunner:
                     if best_player_id is not None:
                         metrics = compute_posture_metrics(player_kps.keypoints_by_name)
                         self.data_analytics.add_player_posture(
-                            best_player_id, metrics,
+                            best_player_id, metrics
                         )
 
             """ CAREFUL HERE (READ THE CODE CAREFULLY)"""
