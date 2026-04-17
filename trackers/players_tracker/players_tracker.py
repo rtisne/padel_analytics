@@ -124,6 +124,10 @@ class Player:
         """
 
         if _box_annotator is None or _label_annotator is None:
+            # No pre-created annotators supplied: build them from the annotator style
+            # parameter.  The PlayerTracker.draw_kwargs() path always provides matching
+            # pre-created instances so this branch is only reached when draw() is called
+            # directly without cached annotators.
             thickness = sv.calculate_optimal_line_thickness(
                 resolution_wh=video_info.resolution_wh,
             )
