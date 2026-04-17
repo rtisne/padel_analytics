@@ -1,7 +1,15 @@
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
+
+from analytics.strike_posture_analysis import (
+    compute_posture_metrics,
+    PostureMetrics,
+    posture_score,
+    READY_POSITION_RANGES,
+    STRIKE_RANGES,
+)
 
 
 class InvalidDataPoint(Exception):
@@ -35,10 +43,12 @@ class DataPoint:
     Attributes: 
         frame: frame of interest
         players_position: players position (meters) in the given frame
+        players_posture_metrics: posture metrics per player (keyed by player index)
     """
 
     frame: int = None
     players_position: list[PlayerPosition] = None
+    players_posture_metrics: dict[int, PostureMetrics] = field(default_factory=dict)
 
     def validate(self) -> None:
 
@@ -70,6 +80,12 @@ class DataPoint:
             self.players_position = [player_position]
         else:
             self.players_position.append(player_position)
+
+    def add_player_posture_metrics(
+        self, player_index: int, metrics: PostureMetrics,
+    ) -> None:
+        """Store posture metrics for a given player index in this frame."""
+        self.players_posture_metrics[player_index] = metrics
 
     def sort_players_position(self) -> Optional[list[PlayerPosition]]:
         if self.players_position:
@@ -137,6 +153,17 @@ class DataAnalytics:
         return instance
     
     def into_dict(self) -> dict[str, list]:
+        posture_angle_names = [
+            "left_knee_angle",
+            "right_knee_angle",
+            "left_elbow_angle",
+            "right_elbow_angle",
+            "left_shoulder_angle",
+            "right_shoulder_angle",
+            "torso_lean_angle",
+            "shoulder_alignment_angle",
+        ]
+
         data = {
             "frame": [],
             "player1_x": [],
@@ -148,6 +175,11 @@ class DataAnalytics:
             "player4_x": [],
             "player4_y": [],
         }
+
+        # Add posture columns for each player
+        for player_id in (1, 2, 3, 4):
+            for angle_name in posture_angle_names:
+                data[f"player{player_id}_{angle_name}"] = []
 
         for datapoint in self.datapoints:
             data["frame"].append(datapoint.frame)
@@ -162,6 +194,19 @@ class DataAnalytics:
                     data[f"{player_position.key}_y"].append(
                         player_position.position[1] 
                     )
+
+            # Add posture metrics
+            for player_id in (1, 2, 3, 4):
+                metrics = datapoint.players_posture_metrics.get(player_id)
+                if metrics is not None:
+                    metrics_dict = metrics.as_dict()
+                    for angle_name in posture_angle_names:
+                        data[f"player{player_id}_{angle_name}"].append(
+                            metrics_dict.get(angle_name)
+                        )
+                else:
+                    for angle_name in posture_angle_names:
+                        data[f"player{player_id}_{angle_name}"].append(None)
 
             # Append missing values
             for k, v in data.items():
@@ -201,6 +246,14 @@ class DataAnalytics:
                 position=position,
             )
         )
+
+    def add_player_posture(
+        self,
+        player_index: int,
+        metrics: PostureMetrics,
+    ) -> None:
+        """Store posture metrics for a player in the current frame."""
+        self.current_datapoint.add_player_posture_metrics(player_index, metrics)
 
     def into_dataframe(self, fps: int) -> pd.DataFrame:
         """
@@ -247,6 +300,32 @@ class DataAnalytics:
                     df[f"player{player_id}_Ax{frame_interval}"] ** 2
                     + df[f"player{player_id}_Ay{frame_interval}"] ** 2
                 )
+
+        # Compute per-frame posture scores for each player
+        for player_id in player_ids:
+            ready_scores = []
+            strike_scores = []
+            for _, row in df.iterrows():
+                metrics = PostureMetrics(
+                    left_knee_angle=row.get(f"player{player_id}_left_knee_angle"),
+                    right_knee_angle=row.get(f"player{player_id}_right_knee_angle"),
+                    left_elbow_angle=row.get(f"player{player_id}_left_elbow_angle"),
+                    right_elbow_angle=row.get(f"player{player_id}_right_elbow_angle"),
+                    left_shoulder_angle=row.get(f"player{player_id}_left_shoulder_angle"),
+                    right_shoulder_angle=row.get(f"player{player_id}_right_shoulder_angle"),
+                    torso_lean_angle=row.get(f"player{player_id}_torso_lean_angle"),
+                    shoulder_alignment_angle=row.get(f"player{player_id}_shoulder_alignment_angle"),
+                )
+                ready_eval = metrics.evaluate(READY_POSITION_RANGES)
+                strike_eval = metrics.evaluate(STRIKE_RANGES)
+                ready_scores.append(
+                    posture_score(ready_eval) if ready_eval else None,
+                )
+                strike_scores.append(
+                    posture_score(strike_eval) if strike_eval else None,
+                )
+            df[f"player{player_id}_ready_posture_score"] = ready_scores
+            df[f"player{player_id}_strike_posture_score"] = strike_scores
 
         return df
 

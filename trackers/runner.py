@@ -11,10 +11,12 @@ import cv2
 import supervision as sv
 
 from trackers.players_tracker.players_tracker import Players
+from trackers.players_keypoints_tracker.players_keypoints_tracker import PlayersKeypoints
 from trackers.ball_tracker.ball_tracker import Ball
 from trackers.keypoints_tracker.keypoints_tracker import Keypoints
 from trackers.tracker import Tracker
 from analytics import ProjectedCourt, DataAnalytics
+from analytics.strike_posture_analysis import compute_posture_metrics
 
 
 class TrackingRunner:
@@ -126,6 +128,7 @@ class TrackingRunner:
             )
 
             players_detection = None
+            players_keypoints_detection = None
             ball_detection = None
             keypoints_detection = None
             for tracker in self.trackers.values():
@@ -140,6 +143,8 @@ class TrackingRunner:
 
                 if tracker.object() == Players:
                     players_detection = deepcopy(prediction)
+                elif tracker.object() == PlayersKeypoints:
+                    players_keypoints_detection = deepcopy(prediction)
                 elif tracker.object() == Ball:
                     ball_detection = deepcopy(prediction)
                 elif tracker.object() == Keypoints:
@@ -153,6 +158,37 @@ class TrackingRunner:
                 data_analytics=self.data_analytics,
                 is_fixed_keypoints=self.is_fixed_keypoints,
             )
+
+            # Collect player posture metrics from keypoints
+            if (
+                self.data_analytics is not None
+                and players_keypoints_detection is not None
+                and players_detection is not None
+            ):
+                for player_kp_idx, player_kps in enumerate(
+                    players_keypoints_detection
+                ):
+                    if len(player_kps) == 0:
+                        continue
+                    # Match keypoints to tracked players by closest bounding box center
+                    kp_positions = [kp.xy for kp in player_kps]
+                    kp_center_x = sum(p[0] for p in kp_positions) / len(kp_positions)
+                    kp_center_y = sum(p[1] for p in kp_positions) / len(kp_positions)
+
+                    best_player_id = None
+                    best_dist = float("inf")
+                    for player in players_detection:
+                        mid = player.midpoint
+                        dist = (mid[0] - kp_center_x) ** 2 + (mid[1] - kp_center_y) ** 2
+                        if dist < best_dist:
+                            best_dist = dist
+                            best_player_id = player.id
+
+                    if best_player_id is not None:
+                        metrics = compute_posture_metrics(player_kps.keypoints_by_name)
+                        self.data_analytics.add_player_posture(
+                            best_player_id, metrics,
+                        )
 
             """ CAREFUL HERE (READ THE CODE CAREFULLY)"""
 
