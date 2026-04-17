@@ -224,6 +224,19 @@ class ProjectedCourt:
         self._set_projected_court_position()
         self._set_projected_court_keypoints()
 
+        # Pre-compute background overlay shapes and mask (fixed for the entire video)
+        self._background_shapes = np.zeros(
+            (video_info.height, video_info.width, 3), np.uint8
+        )
+        cv2.rectangle(
+            self._background_shapes,
+            self.background_position.top_left,
+            self.background_position.bottom_right,
+            (255, 255, 255),
+            -1,
+        )
+        self._background_mask = self._background_shapes.astype(bool)
+
         # Initialize the homography matrix H
         self.H = None
 
@@ -329,23 +342,14 @@ class ProjectedCourt:
         Draw the projected court background on the given frame
         """
 
-        shapes = np.zeros_like(frame, np.uint8)
-        cv2.rectangle(
-            shapes,
-            self.background_position.top_left,
-            self.background_position.bottom_right,
-            (255, 255, 255),
-            -1,
-        )
         output_frame = frame.copy()
-        mask = shapes.astype(bool)
-        output_frame[mask] = cv2.addWeighted(
+        output_frame[self._background_mask] = cv2.addWeighted(
             output_frame,
             self.ALPHA,
-            shapes,
+            self._background_shapes,
             1 - self.ALPHA,
             0,
-        )[mask]
+        )[self._background_mask]
 
         return output_frame
     

@@ -108,6 +108,8 @@ class Player:
             "ellipse"
         ] = "rectangle_bounding_box",
         show_confidence: bool = True,
+        _box_annotator=None,
+        _label_annotator=None,
     ) -> np.ndarray:
         """
         Draw player detection in a given frame
@@ -117,43 +119,50 @@ class Player:
             video_info: source video information like fps and resolution
             annotator: bounding box style
             show_confidence: True to write detection confidence
+            _box_annotator: pre-created box annotator (avoids rebuilding per draw call)
+            _label_annotator: pre-created label annotator (avoids rebuilding per draw call)
         """
 
-        thickness = sv.calculate_optimal_line_thickness(
-            resolution_wh=video_info.resolution_wh,
-        )
-        text_scale = sv.calculate_optimal_text_scale(
-            resolution_wh=video_info.resolution_wh,
-        )
-        annotators = {
-            "rectangle_bounding_box": sv.BoxAnnotator,
-            "round_bounding_box": sv.RoundBoxAnnotator,
-            "corner_bounding_box": sv.BoxCornerAnnotator,
-            "ellipse": sv.EllipseAnnotator,
-        }
+        if _box_annotator is None or _label_annotator is None:
+            # No pre-created annotators supplied: build them from the annotator style
+            # parameter.  The PlayerTracker.draw_kwargs() path always provides matching
+            # pre-created instances so this branch is only reached when draw() is called
+            # directly without cached annotators.
+            thickness = sv.calculate_optimal_line_thickness(
+                resolution_wh=video_info.resolution_wh,
+            )
+            text_scale = sv.calculate_optimal_text_scale(
+                resolution_wh=video_info.resolution_wh,
+            )
+            annotators = {
+                "rectangle_bounding_box": sv.BoxAnnotator,
+                "round_bounding_box": sv.RoundBoxAnnotator,
+                "corner_bounding_box": sv.BoxCornerAnnotator,
+                "ellipse": sv.EllipseAnnotator,
+            }
 
-        box_annotator = annotators[annotator](
-            thickness=thickness, 
-            color=sv.Color.BLUE,
-        )
+            _box_annotator = annotators[annotator](
+                thickness=thickness, 
+                color=sv.Color.BLUE,
+            )
 
-        label_annotator = sv.LabelAnnotator(
-            text_position=sv.Position.TOP_CENTER,
-            text_scale=text_scale,
-            text_thickness=thickness,
-            color=sv.Color.BLUE,
-        )
+            _label_annotator = sv.LabelAnnotator(
+                text_position=sv.Position.TOP_CENTER,
+                text_scale=text_scale,
+                text_thickness=thickness,
+                color=sv.Color.BLUE,
+            )
 
         annotated_frame = cv2.cvtColor(
             frame, 
             cv2.COLOR_RGB2BGR,
         ).copy()
 
-        annotated_frame = box_annotator.annotate(
+        annotated_frame = _box_annotator.annotate(
             scene=annotated_frame,
             detections=self.detection,
         )
-        annotated_frame = label_annotator.annotate(
+        annotated_frame = _label_annotator.annotate(
             scene=annotated_frame,
             detections=self.detection,
             labels=[
@@ -241,6 +250,8 @@ class Players(Object):
             "ellipse"
         ] = "rectangle_bounding_box",
         show_confidence: bool = True,
+        _box_annotator=None,
+        _label_annotator=None,
     ) -> np.ndarray:
         """
         Draw players detection in a given frame
@@ -250,6 +261,8 @@ class Players(Object):
             video_info: source video information like fps and resolution
             annotator: bounding box style
             show_confidence: True to write detection confidence
+            _box_annotator: pre-created box annotator (avoids rebuilding per draw call)
+            _label_annotator: pre-created label annotator (avoids rebuilding per draw call)
         """
     
         for player in self.players:
@@ -258,6 +271,8 @@ class Players(Object):
                 video_info, 
                 annotator, 
                 show_confidence,
+                _box_annotator=_box_annotator,
+                _label_annotator=_label_annotator,
             )
 
         return frame
@@ -309,6 +324,30 @@ class PlayerTracker(Tracker):
     def video_info_post_init(self, video_info: sv.VideoInfo) -> "PlayerTracker":
         self.video_info = video_info
         self.byte_track = sv.ByteTrack(frame_rate=video_info.fps)
+
+        # Pre-create annotators once so they are not rebuilt on every draw call
+        thickness = sv.calculate_optimal_line_thickness(
+            resolution_wh=video_info.resolution_wh,
+        )
+        text_scale = sv.calculate_optimal_text_scale(
+            resolution_wh=video_info.resolution_wh,
+        )
+        annotators = {
+            "rectangle_bounding_box": sv.BoxAnnotator,
+            "round_bounding_box": sv.RoundBoxAnnotator,
+            "corner_bounding_box": sv.BoxCornerAnnotator,
+            "ellipse": sv.EllipseAnnotator,
+        }
+        self._box_annotator = annotators[self.annotator](
+            thickness=thickness,
+            color=sv.Color.BLUE,
+        )
+        self._label_annotator = sv.LabelAnnotator(
+            text_position=sv.Position.TOP_CENTER,
+            text_scale=text_scale,
+            text_thickness=thickness,
+            color=sv.Color.BLUE,
+        )
         return self
 
     def object(self) -> Type[Object]:
@@ -319,6 +358,8 @@ class PlayerTracker(Tracker):
             "video_info": self.video_info,
             "annotator": self.annotator,
             "show_confidence": self.show_confidence,
+            "_box_annotator": self._box_annotator,
+            "_label_annotator": self._label_annotator,
         }
     
     def __str__(self) -> str:
